@@ -1,0 +1,15 @@
+{
+  "generations": {
+    "token_ids": "token_ids",
+    "token_count": "token_count",
+    "extracted_answer": "extracted_answer",
+    "gold_answer": "gold_answer",
+    "problem": "problem"
+  },
+  "probability": {"logp": "logp", "kl_u_p": "kl_u_p"},
+  "attention": {
+    "image_attention": "image_attention",
+    "prompt_attention": "prompt_attention",
+    "generated_attention": "generated_attention"
+  }
+}

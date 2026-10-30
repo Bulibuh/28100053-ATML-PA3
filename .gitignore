@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+data/cache/
+data/prepared/
+data/external/*
+!data/external/README.md
+checkpoints/
+.hf_cache/
+*.parquet
+*.pt
+*.safetensors
+*.zip

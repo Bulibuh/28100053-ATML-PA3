@@ -1,0 +1,12 @@
+[
+  {
+    "filename": "first_plot_questions.yaml",
+    "url": "https://raw.githubusercontent.com/emergent-misalignment/emergent-misalignment/main/evaluation/first_plot_questions.yaml",
+    "sha256": "215abde5b02811e922b6ac563ff33c490e0dff9ab58439df840f3135e9387173"
+  },
+  {
+    "filename": "mathvista_testmini.json",
+    "url": "https://raw.githubusercontent.com/lupantech/MathVista/main/data/testmini.json",
+    "sha256": "ab0148dca9d401c31cc47f29b3826eec28a76ff155a1c0878d81e8daf0413480"
+  }
+]

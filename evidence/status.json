@@ -1,0 +1,73 @@
+{
+  "task1": {
+    "present": [],
+    "missing": [
+      "data.json",
+      "learning_curves.png",
+      "benchmark_comparison.csv",
+      "primary_benchmarks.csv",
+      "resources.csv",
+      "diagnostics/metrics.json",
+      "regularization.png",
+      "displacements.csv",
+      "qualitative/responses.json",
+      "qualitative/annotations_to_complete.csv",
+      "full/resources.json",
+      "l2sp/resources.json",
+      "lora4/resources.json",
+      "lora16/resources.json",
+      "oplora16/resources.json",
+      "evaluation/baseline/scores.json",
+      "evaluation/full_mid/scores.json",
+      "evaluation/full/scores.json",
+      "evaluation/l2sp/scores.json",
+      "evaluation/lora4/scores.json",
+      "evaluation/lora16/scores.json",
+      "evaluation/oplora16/scores.json"
+    ]
+  },
+  "task2": {
+    "present": [],
+    "missing": [
+      "splits.json",
+      "feature_cache.json",
+      "tokens_196/completed.json",
+      "tokens_196/calibration.json",
+      "tokens_196/development_metrics.csv",
+      "tokens_196/resources.jsonl",
+      "tokens_196/final/predictions.json",
+      "tokens_196/final/summary.json",
+      "tokens_196/final/paired_contrasts.json",
+      "tokens_196/final/qualitative_examples.json"
+    ]
+  },
+  "task3": {
+    "present": [],
+    "missing": [
+      "offline/math/splits.json",
+      "offline/math/orders.json",
+      "offline/math/selected_policies.json",
+      "offline/math/fixed_summary.csv",
+      "offline/math/paired_differences.json",
+      "offline/math/signals.json",
+      "offline/math/adaptive_summary.json",
+      "offline/math/accuracy_cost_curves.png",
+      "offline/mathvista/splits.json",
+      "offline/mathvista/orders.json",
+      "offline/mathvista/selected_policies.json",
+      "offline/mathvista/fixed_summary.csv",
+      "offline/mathvista/paired_differences.json",
+      "offline/mathvista/signals.json",
+      "offline/mathvista/adaptive_summary.json",
+      "offline/mathvista/accuracy_cost_curves.png",
+      "live/generations.json",
+      "live/summary.csv",
+      "live/revision_transitions.json"
+    ]
+  },
+  "human_work": [
+    "Complete 42 qualitative annotations, inspect labels, and write your own report/analysis."
+  ],
+  "status": "experiments_incomplete",
+  "note": "Artifact presence is not proof of protocol compliance; inspect configs, skipped updates, counts, and raw records."
+}
