@@ -23,7 +23,7 @@ source .venv-colab/bin/activate
 pa3 doctor --require-cuda
 ```
 
-The installer creates an isolated `.venv-colab` with the official matching CUDA 12.8 pair **torch 2.9.1 / torchvision 0.24.1**. It runs dependency checks, torchvision's compiled NMS operator, Qwen/SigLIP/harness imports, an actual FP16 CUDA operation, and pytest. It leaves Colab's shared packages untouched, avoiding shared-environment dependency conflicts and mismatched torchvision binaries. The first installation requires several GB of disk for the separate CUDA stack.
+The installer creates an isolated `.venv-colab` with the official matching CUDA 12.8 pair **torch 2.9.1 / torchvision 0.24.1**. It supports system Python without `ensurepip`/`pip` and repairs a pip-less partial environment using a checksum-verified pip wheel. It saves command output to `setup_colab.log` and runs dependency checks, torchvision's compiled NMS operator, Qwen/SigLIP/harness imports, an actual FP16 CUDA operation, and pytest. It leaves Colab's shared packages untouched, avoiding shared-environment dependency conflicts and mismatched torchvision binaries. The first installation requires several GB of disk for the separate CUDA stack.
 
 In a `%%bash` cell use `python`, **not `!python`**. Activate `.venv-colab` in each new shell cell; shell activation does not persist between notebook cells. The updated notebook selects the same virtualenv for every subprocess. Do not run the previous global-install or torchvision `--no-deps` workaround cells.
 

@@ -37,7 +37,7 @@ set -euo pipefail
 python scripts/setup_colab.py
 ```
 
-It creates .venv-colab without shared site-packages, installs the official matching PyTorch 2.9.1 / torchvision 0.24.1 CUDA 12.8 wheels, installs assignment dependencies, runs pip check, checks compiled torchvision operators and model imports, executes an FP16 CUDA matrix multiplication, and runs the tests. Colab's notebook-kernel packages are left untouched. The first install downloads a separate CUDA stack and needs several GB of disk; subsequent runs reuse it.
+It creates .venv-colab without shared site-packages, handles system Python without ensurepip/pip, repairs a partially created pip-less environment, installs the official matching PyTorch 2.9.1 / torchvision 0.24.1 CUDA 12.8 wheels, installs assignment dependencies, runs pip check, checks compiled torchvision operators and model imports, executes an FP16 CUDA matrix multiplication, and runs the tests. Colab's notebook-kernel packages are left untouched. The first install downloads a separate CUDA stack and needs several GB of disk; subsequent runs reuse it.
 
 Inside a %%bash cell, use ordinary shell commands: python, never !python. Do not put a backslash at the end of every line. A backslash is used only for the deliberate multiline commands shown later. Exit code 127 means a shell command was not found; IPython ! syntax is not recognized inside bash.
 
@@ -52,6 +52,8 @@ pa3 doctor --require-cuda
 ```
 
 The notebook uses this same isolated interpreter for all subprocesses. Do not import the notebook kernel's preinstalled torch to judge the assignment environment. If you already ran the old shared-package install or torchvision workaround, use the new isolated installer; no manual torchvision uninstall or --no-deps replacement is needed. The --cpu setup option is for implementation checks on a CPU machine and must not be used for A100 experiments. CPU test success does not establish GPU readiness.
+
+If setup fails, inspect `setup_colab.log` in the repository. It contains the original command output and the failing step; the final CalledProcessError alone does not identify the cause. The notebook streams the output and also saves `setup_colab_output.log`. Keep the existing virtualenv when retrying; downloaded packages can be reused.
 
 ## 3. Mount Drive and checkpoint safety
 

@@ -91,3 +91,88 @@ def test_doctor_catches_the_reported_missing_torchvision_operator(monkeypatch, c
         doctor(SimpleNamespace(require_cuda=False))
     result = json.loads(capsys.readouterr().out)
     assert any("torchvision::nms" in error for error in result["errors"])
+
+
+def test_verified_pip_download_rejects_bad_checksum_without_executing(
+    tmp_path, monkeypatch
+):
+    import hashlib
+    import io
+
+    module = installer_module()
+    wheel = b"actual wheel bytes"
+    metadata = {
+        "urls": [
+            {
+                "filename": f"pip-{module.PIP_VERSION}-py3-none-any.whl",
+                "url": "https://files.pythonhosted.org/example.whl",
+                "digests": {"sha256": hashlib.sha256(b"different bytes").hexdigest()},
+            }
+        ]
+    }
+    responses = iter([io.BytesIO(json.dumps(metadata).encode()), io.BytesIO(wheel)])
+    monkeypatch.setattr(
+        module.urllib.request, "urlopen", lambda *a, **k: next(responses)
+    )
+    with pytest.raises(RuntimeError, match="SHA-256 verification failed"):
+        module.download_verified_pip(tmp_path)
+    assert not list(tmp_path.rglob("*.whl"))
+
+
+def test_verified_pip_download_retains_exact_wheel(tmp_path, monkeypatch):
+    import hashlib
+    import io
+
+    module = installer_module()
+    wheel = b"verified wheel contents"
+    metadata = {
+        "urls": [
+            {
+                "filename": f"pip-{module.PIP_VERSION}-py3-none-any.whl",
+                "url": "https://files.pythonhosted.org/example.whl",
+                "digests": {"sha256": hashlib.sha256(wheel).hexdigest()},
+            }
+        ]
+    }
+    responses = iter([io.BytesIO(json.dumps(metadata).encode()), io.BytesIO(wheel)])
+    monkeypatch.setattr(
+        module.urllib.request, "urlopen", lambda *a, **k: next(responses)
+    )
+    path = module.download_verified_pip(tmp_path)
+    assert path.read_bytes() == wheel
+
+
+def test_pipless_partial_venv_is_repaired_without_ensurepip(tmp_path, monkeypatch):
+    module = installer_module()
+    executable = module.environment_python(tmp_path)
+    executable.parent.mkdir()
+    executable.write_text("existing interpreter")
+    sentinel = tmp_path / "keep.txt"
+    sentinel.write_text("keep")
+    monkeypatch.setattr(
+        module.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1)
+    )
+    wheel = tmp_path / "verified.whl"
+    monkeypatch.setattr(module, "download_verified_pip", lambda path: wheel)
+    calls = []
+    monkeypatch.setattr(module, "run", lambda command: calls.append(command))
+    assert module.ensure_environment(tmp_path) == executable
+    assert calls[0][0] == executable and calls[0][-1] == wheel
+    assert "runpy" in calls[0][2]
+    assert sentinel.read_text() == "keep"
+
+
+def test_installer_logs_original_command_failure(tmp_path, monkeypatch, capsys):
+    module = installer_module()
+    module.LOG_FILE = tmp_path / "setup.log"
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        module.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; print('original failure detail'); sys.exit(7)",
+            ]
+        )
+    assert error.value.returncode == 7
+    assert "original failure detail" in module.LOG_FILE.read_text()
+    assert "original failure detail" in capsys.readouterr().out
