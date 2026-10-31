@@ -1,3 +1,0 @@
-.....................                                                    [100%]
-- generated xml file: /workspace/28100053-ATML-PA3/evidence/validation/pytest.xml -
-21 passed in 8.53s
