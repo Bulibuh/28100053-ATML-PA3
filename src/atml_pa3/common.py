@@ -246,8 +246,13 @@ def amp_update(optimizer, scaler, parameters, backward, on_skip=None, max_attemp
         scaler.unscale_(optimizer)
         norm = torch.nn.utils.clip_grad_norm_(parameters, 1.0)
         old_scale = scaler.get_scale()
-        scaler.step(optimizer)
-        scaler.update()
+        if not math.isfinite(float(norm)):
+            # A norm reduction can overflow even when individual gradients are finite.
+            # Never count such an attempt as a successful (zeroed/NaN) parameter update.
+            scaler.update(new_scale=old_scale / 2)
+        else:
+            scaler.step(optimizer)
+            scaler.update()
         if scaler.get_scale() >= old_scale:
             return metrics, float(norm), attempt
         if on_skip is not None:

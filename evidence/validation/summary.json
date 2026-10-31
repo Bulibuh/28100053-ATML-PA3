@@ -24,16 +24,21 @@
   "qualitative_yaml_sha256": "215abde5b02811e922b6ac563ff33c490e0dff9ab58439df840f3135e9387173",
   "tests": {
     "python312": {
-      "tests": 26,
+      "tests": 32,
       "errors": 0,
       "failures": 0,
       "skipped": 0
     },
     "python313": {
-      "tests": 26,
+      "tests": 32,
       "errors": 0,
       "failures": 0,
       "skipped": 0
     }
-  }
+  },
+  "audit_changes": [
+    "Visible progress and 15-second stage liveness reports",
+    "Notebook subprocess streaming and retained error logs",
+    "Retry overflowed gradient norms without an optimizer update"
+  ]
 }

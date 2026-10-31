@@ -7,6 +7,7 @@ import torch
 from .common import *
 from .task1 import new_model, tokenizer, construct, model_spec
 from .adapters import merge, singular_bases
+from .progress import tqdm, stage, message
 
 CONDITIONS = {
     "baseline": None,
@@ -36,7 +37,7 @@ def merged_model(condition, t, out):
     model = checkpoint_model(condition)
     if condition not in ("lora4", "lora16", "oplora16"):
         return model
-    batch = t("What is 2 + 3?", return_tensors="pt").to("cuda")
+    batch = t("What is 2 + 3?", return_tensors="pt", return_token_type_ids=False).to("cuda")
     with torch.no_grad():
         before = model(**batch).logits.float().cpu()
     # The wrapper backbone was freshly loaded, then only the saved adapter state applied.
@@ -147,12 +148,19 @@ def evaluate(args):
     from lm_eval import evaluator
     from lm_eval.models.huggingface import HFLM
 
+    if args.batch_size < 1:
+        raise ValueError("Batch size must be positive")
     require_cuda()
     seed_all()
     out = ARTIFACT_ROOT / "evidence/task1/evaluation" / args.condition
     out.mkdir(parents=True, exist_ok=True)
     t = tokenizer()
     model = merged_model(args.condition, t, out)
+    devices = {str(p.device) for p in model.parameters()}
+    if any(p.device.type != "cuda" for p in model.parameters()):
+        raise RuntimeError(f"Evaluation model is not entirely on CUDA: {devices}")
+    message(f"Evaluation {args.condition}: GPU={torch.cuda.get_device_name()}, devices={devices}, "
+            f"dtype={next(model.parameters()).dtype}, batch_size={args.batch_size}")
     # Force non-thinking template for GSM8K; likelihood tasks never apply the chat template.
     t.apply_chat_template = functools.partial(
         t.apply_chat_template, enable_thinking=False
@@ -167,19 +175,20 @@ def evaluate(args):
         (["hellaswag", "boolq", "arc_easy"], False),
     ]:
         from .taskdefs import task_configs
-        res = evaluator.simple_evaluate(
-            model=lm,
-            tasks=task_configs(tasks),
-            num_fewshot=0,
-            apply_chat_template=chat,
-            gen_kwargs={"max_gen_toks": 1024, "do_sample": False} if chat else None,
-            log_samples=True,
-            random_seed=SEED,
-            numpy_random_seed=SEED,
-            torch_random_seed=SEED,
-            fewshot_random_seed=SEED,
-            limit=None,
-        )
+        with stage(f"Evaluate {', '.join(tasks)}: dataset loading, request preparation, then inference"):
+            res = evaluator.simple_evaluate(
+                model=lm,
+                tasks=task_configs(tasks),
+                num_fewshot=0,
+                apply_chat_template=chat,
+                gen_kwargs={"max_gen_toks": 1024, "do_sample": False} if chat else None,
+                log_samples=True,
+                random_seed=SEED,
+                numpy_random_seed=SEED,
+                torch_random_seed=SEED,
+                fewshot_random_seed=SEED,
+                limit=None,
+            )
         samples = res.pop("samples")
         all_results.update(res["results"])
         for task, rows in samples.items():
@@ -191,6 +200,7 @@ def evaluate(args):
             }[task]
             rows = pack_samples(task, rows, expected, lm.rows)
             completed_counts[task] = len(rows)
+            message(f"{task}: completed {len(rows)} examples; saving outputs")
             with (out / f"{task}_samples.jsonl").open("w") as f:
                 for r in rows:
                     f.write(json.dumps(r, default=json_default) + "\n")
@@ -241,12 +251,13 @@ def diagnostics(args):
             if file.exists():
                 u, v = torch.load(file, map_location="cpu", weights_only=True)
             else:
-                u, v = singular_bases(module.weight, 128)
+                with stage(f"Diagnostic SVD for layer {layer}"):
+                    u, v = singular_bases(module.weight, 128)
                 file.parent.mkdir(parents=True, exist_ok=True)
                 torch.save((u.cpu(), v.cpu()), file)
             bases[layer] = u.cpu()
             activations[layer] = []
-        for probe in probes:
+        for probe in tqdm(probes, desc="Cache FP32 baseline activations", unit="prompt"):
             batch = t(probe["prompt"], return_tensors="pt", add_special_tokens=False).to("cuda")
             hooks = []
             for layer in layers:
@@ -265,7 +276,7 @@ def diagnostics(args):
         torch.save(dict(inputs=activations, weights=weights, bases=bases, probes=probes,
                         probe_sha256=probe_hash, model=model_spec()), cache)
     rows = []
-    for condition, spec in CONDITIONS.items():
+    for condition, spec in tqdm(list(CONDITIONS.items()), desc="Weight/activation diagnostics", unit="condition"):
         if spec is None:
             continue
         method, update = spec
@@ -353,6 +364,8 @@ def generate_qualitative_batch(model, t, records):
         qualitative_messages(r), tokenize=False, add_generation_prompt=True,
         enable_thinking=False,
     ) for r in records]
+    if not records:
+        return []
     old_side = t.padding_side
     try:
         t.padding_side = "left"
@@ -360,8 +373,9 @@ def generate_qualitative_batch(model, t, records):
                   return_token_type_ids=False, return_tensors="pt").to(model.device)
     finally:
         t.padding_side = old_side
-    result = model.generate(**batch, do_sample=False, max_new_tokens=512,
-                            pad_token_id=t.pad_token_id)
+    with stage(f"Generate {len(records)} qualitative responses (up to 512 tokens each)"):
+        result = model.generate(**batch, do_sample=False, max_new_tokens=512,
+                                pad_token_id=t.pad_token_id)
     eos = model.generation_config.eos_token_id
     eos = {eos} if isinstance(eos, int) else set(eos or [t.eos_token_id])
     rows = []
@@ -399,7 +413,6 @@ def qualitative(args):
         model = merged_model(
             condition, t, ARTIFACT_ROOT / "evidence/task1/evaluation" / condition
         )
-        from tqdm.auto import tqdm
         batch_size = getattr(args, "batch_size", 1)
         for start in tqdm(range(0, len(records), batch_size), desc=f"Qualitative {condition}"):
             chunk = records[start:start + batch_size]

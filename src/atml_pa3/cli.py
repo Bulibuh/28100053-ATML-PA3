@@ -1,11 +1,13 @@
 """Command line entry points. No experiments run at import time."""
 import argparse
 import os
+import logging
 
 
 def main():
     # CLI processes render files and never need Colab's notebook-only backend.
     os.environ["MPLBACKEND"] = "Agg"
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from .task1 import METHODS
     from .task1_eval import CONDITIONS
     p = argparse.ArgumentParser(description=__doc__)

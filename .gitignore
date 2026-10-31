@@ -10,3 +10,5 @@ checkpoints/
 setup_colab.log
 outputs/
 *.pt
+
+logs/

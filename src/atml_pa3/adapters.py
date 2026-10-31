@@ -6,16 +6,16 @@ import time
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .common import write_json
+from .progress import tqdm, stage
 
 TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
 
 
 def singular_bases(weight, k):
     # Exact FP32 SVD, no randomized-subspace approximation.
+    if k < 1 or k > min(weight.shape):
+        raise ValueError("Protection rank must be positive and no larger than either matrix dimension")
     u, _, vh = torch.linalg.svd(weight.detach().float(), full_matrices=False)
-    if k > min(weight.shape):
-        raise ValueError("Protection rank exceeds matrix rank dimension")
     return u[:, :k].contiguous(), vh[:k, :].T.contiguous()
 
 
@@ -78,7 +78,7 @@ def attach(model, rank=16, alpha=32, protection=0, targets=TARGETS, cache=None):
         torch.cuda.synchronize()
     started = time.perf_counter()
     storage = 0
-    for name, module in paths:
+    for name, module in tqdm(paths, desc="OPLoRA bases" if protection else "Attach LoRA", unit="matrix"):
         bases = None
         if protection:
             file = Path(cache) / f"{name}.pt" if cache else None
@@ -87,7 +87,8 @@ def attach(model, rank=16, alpha=32, protection=0, targets=TARGETS, cache=None):
                     file, map_location=module.weight.device, weights_only=True
                 )
             else:
-                bases = singular_bases(module.weight, protection)
+                with stage(f"FP32 SVD: {name}"):
+                    bases = singular_bases(module.weight, protection)
                 if file:
                     file.parent.mkdir(parents=True, exist_ok=True)
                     torch.save(tuple(v.cpu() for v in bases), file)

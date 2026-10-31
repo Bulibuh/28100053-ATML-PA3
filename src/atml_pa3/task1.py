@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from .common import *
 from .adapters import attach, export_factors
+from .progress import tqdm, stage, message
 
 METHODS = ("full", "l2sp", "lora4", "lora16", "oplora16")
 
@@ -40,12 +41,13 @@ def new_model(dtype=torch.float16):
     from transformers import AutoModelForCausalLM
 
     spec = model_spec()
-    return AutoModelForCausalLM.from_pretrained(
-        spec["model"],
-        revision=spec["revision"],
-        torch_dtype=dtype,
-        attn_implementation="sdpa",
-    ).to("cuda")
+    with stage(f"Load {spec['model']} onto CUDA ({dtype})"):
+        return AutoModelForCausalLM.from_pretrained(
+            spec["model"],
+            revision=spec["revision"],
+            torch_dtype=dtype,
+            attn_implementation="sdpa",
+        ).to("cuda")
 
 
 def prepare(args):
@@ -79,13 +81,17 @@ def prepare(args):
         )
         return
     from .taskdefs import dataset_spec, load_tasks
-    ds = dataset_spec(create=True)
+    with stage("Resolve immutable dataset revisions"):
+        ds = dataset_spec(create=True)
     t = tokenizer()
+    message("Loading GSM8K exclusion questions (dataset download/cache stage)")
     gsm = load_dataset("openai/gsm8k", "main", split="test", revision=ds["revisions"]["openai/gsm8k"])
     excluded = {normalized(r["question"]) for r in gsm}
+    message("Loading MetaMath source (dataset download/cache stage)")
     source = load_dataset("meta-math/MetaMathQA", split="train", revision=ds["revisions"]["meta-math/MetaMathQA"])
     rows = []
     rejected = dict(empty=0, contamination=0, too_long=0)
+    selection_bar = tqdm(total=40000, desc="Eligible training examples", unit="example")
     for i, r in enumerate(source):
         q = str(r.get("query") or "").strip()
         a = str(r.get("response") or "").strip()
@@ -103,14 +109,19 @@ def prepare(args):
             rejected["too_long"] += 1
             continue
         rows.append(dict(source_index=i, **encoded))
+        selection_bar.update(1)
+        if len(rows) % 250 == 0:
+            selection_bar.set_postfix(scanned=i + 1, rejected=sum(rejected.values()))
         if len(rows) == 40000:
             break
+    selection_bar.close()
     if len(rows) != 40000:
         raise ValueError(f"Only {len(rows)} eligible examples")
     with (out / "train.jsonl").open("w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
-    tasks = load_tasks(["gsm8k_cot", "hellaswag"])
+    with stage("Load stock task definitions and diagnostic probe splits"):
+        tasks = load_tasks(["gsm8k_cot", "hellaswag"])
     rng = np.random.default_rng(SEED)
     probes = []
     for name, count in [("gsm8k_cot", 1319), ("hellaswag", 10042)]:
@@ -120,7 +131,7 @@ def prepare(args):
         )
         if len(docs) != count:
             raise ValueError(f"Unexpected {name} split size")
-        for i in rng.choice(len(docs), 32, replace=False):
+        for i in tqdm(rng.choice(len(docs), 32, replace=False), desc=f"Select {name} probes"):
             prompt = task.doc_to_text(docs[int(i)])
             if name == "gsm8k_cot":
                 prompt = t.apply_chat_template(
@@ -258,7 +269,8 @@ def train(args):
     )
     begun = time.perf_counter()
     skipped = ck.get("skipped_updates", 0) if args.resume else 0
-    for update in range(start, 1250):
+    updates = tqdm(range(start, 1250), total=1250, initial=start, desc=f"Train {method}", unit="update")
+    for update in updates:
         effective = rows[update * 32 : (update + 1) * 32]
         if len(effective) != 32:
             raise ValueError("Incomplete effective batch")
@@ -304,6 +316,7 @@ def train(args):
         omega = values["omega"]
         skipped += retries
         sched.step()
+        updates.set_postfix(sft=f"{sft:.4f}", lr=f"{used_lr:.2e}", skipped=skipped)
         append_json(
             out / "train.jsonl",
             dict(
@@ -323,21 +336,23 @@ def train(args):
         )
         if update + 1 in cfg["checkpoints"]:
             path = ARTIFACT_ROOT / "checkpoints/task1" / method / f"update_{update+1}.pt"
-            save_checkpoint(
-                path,
-                model,
-                opt,
-                sched,
-                scaler,
-                update=update + 1,
-                method=method,
-                examples=(update + 1) * 32,
-                elapsed_seconds=previous_seconds + time.perf_counter() - begun,
-                peak_gpu_bytes=max(previous_peak, torch.cuda.max_memory_allocated()),
-                skipped_updates=skipped,
-                train_sha256=sha256(ARTIFACT_ROOT / "data/prepared/task1/train.jsonl"),
-                model_spec=model_spec(),
-            )
+            message(f"Saving recovery checkpoint: {path} (may take time on Drive)")
+            with stage(f"Write recovery update {update + 1}"):
+                save_checkpoint(
+                    path,
+                    model,
+                    opt,
+                    sched,
+                    scaler,
+                    update=update + 1,
+                    method=method,
+                    examples=(update + 1) * 32,
+                    elapsed_seconds=previous_seconds + time.perf_counter() - begun,
+                    peak_gpu_bytes=max(previous_peak, torch.cuda.max_memory_allocated()),
+                    skipped_updates=skipped,
+                    train_sha256=sha256(ARTIFACT_ROOT / "data/prepared/task1/train.jsonl"),
+                    model_spec=model_spec(),
+                )
             extra = {}
             if ref is not None and (
                 (method == "full" and update + 1 == 625) or update + 1 == 1250
@@ -354,7 +369,7 @@ def train(args):
                 dict(update=update + 1, bytes=path.stat().st_size, **extra),
             )
         if (update + 1) % 25 == 0:
-            print(method, update + 1, sft, flush=True)
+            message(f"{method}: update {update + 1}/1250, SFT={sft:.5f}")
     if method not in ("full", "l2sp"):
         torch.cuda.synchronize()
         ts = time.perf_counter()

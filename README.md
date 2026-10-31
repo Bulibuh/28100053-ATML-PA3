@@ -111,3 +111,16 @@ The offline suite checks response masking, token-weighted accumulation gradients
 ## Attribution and your report
 
 See [ATTRIBUTIONS.md](ATTRIBUTIONS.md). The manual permits LLM coding assistance; understand and verify every submitted line. Complete your own experiments, the 42 annotations, interpretation, and PDF report. This repository supplies code and plotting utilities, not report prose or invented results.
+
+## Progress and Colab error output
+
+The CLI reports GPU/device/dtype/batch settings at evaluation startup. Progress bars cover selection, optimizer updates (with SFT loss, LR and skipped attempts), adapter/basis preprocessing, baseline activation caching, diagnostic conditions, and qualitative batches. Stock harness request bars cover benchmark inference. Long loading, SVD, checkpoint-writing and generation stages print START/DONE/FAILED messages and a WORKING elapsed-time heartbeat every 15 seconds. A heartbeat indicates the process is alive, not how many inference tokens have completed.
+
+The notebook uses `scripts/colab_runner.py` to stream stdout and stderr, retain per-command logs under `logs/`, and terminate its child process group on interruption. To upgrade an existing notebook's helper without reinstalling dependencies:
+
+```python
+import runpy
+pa3 = runpy.run_path(str(PROJECT / "scripts/colab_runner.py"))["make_runner"](PROJECT, PYTHON)
+```
+
+A failed command still raises with its original exit code. The displayed traceback and saved log are needed to diagnose errors; VRAM usage alone cannot identify their cause. Full GPU runs remain unverified in this development environment.
