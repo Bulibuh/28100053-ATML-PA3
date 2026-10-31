@@ -1,0 +1,39 @@
+{
+  "scope": "Offline implementation and dependency validation only; not assignment experiment results",
+  "python_versions": [
+    "3.12.14",
+    "3.13.5"
+  ],
+  "dependency_checks": {
+    "python312": "passed",
+    "python313": "passed"
+  },
+  "repeated_locked_installer": {
+    "python312": "passed",
+    "python313": "passed"
+  },
+  "identical_dependency_versions_across_python": true,
+  "torch": "2.9.1+cpu",
+  "cuda_wheel_available_for_python313": "2.9.1+cu128 on official PyTorch index",
+  "limitations": [
+    "No CUDA device available in development environment",
+    "Hugging Face domain denied by cloud network policy",
+    "Full model/data download, five full training runs, seven full benchmark conditions, and actual Colab/A100 execution not run"
+  ],
+  "requirements_lock_sha256": "e2fb8bf015aadcd53b62dec47bd9a4655433936a9e7a913bd7f1047f933f7fe3",
+  "qualitative_yaml_sha256": "215abde5b02811e922b6ac563ff33c490e0dff9ab58439df840f3135e9387173",
+  "tests": {
+    "python312": {
+      "tests": 26,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0
+    },
+    "python313": {
+      "tests": 26,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0
+    }
+  }
+}

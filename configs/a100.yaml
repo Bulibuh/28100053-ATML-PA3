@@ -1,0 +1,18 @@
+seed: 6304
+model: Qwen/Qwen3-0.6B
+revision: main  # resolved to an immutable commit in data/prepared/model.json
+attention: sdpa
+precision: fp16
+quantization: false
+task1:
+  examples: 40000
+  max_length: 2048
+  microbatch: 2
+  accumulation: 16
+  updates: 1250
+  warmup: 38
+  full_lr: 0.00002
+  adapter_lr: 0.0002
+  l2_sp: 0.001
+  protection_rank: 128
+  checkpoints: [312, 625, 937, 1250]

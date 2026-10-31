@@ -1,0 +1,19 @@
+{
+  "hardware": {
+    "python": "3.13.5",
+    "torch": "2.9.1+cpu",
+    "cuda": null,
+    "gpu": null
+  },
+  "tiny_qwen_forward_backward": true,
+  "cuda_amp_step": false,
+  "qualitative_prompts": 24,
+  "packages": {
+    "transformers": "4.57.1",
+    "datasets": "3.6.0",
+    "lm_eval": "0.4.9",
+    "peft": "0.17.1",
+    "numpy": "2.3.5",
+    "pyarrow": "21.0.0"
+  }
+}
