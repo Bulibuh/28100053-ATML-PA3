@@ -21,7 +21,7 @@ def local_lm():
     return traced_hflm_class()(pretrained=tiny().eval(),tokenizer=tok,batch_size=2,max_length=256,device='cpu')
 
 
-def test_stock_gsm_filters_sample_join_and_generation_trace(monkeypatch):
+def test_stock_gsm_filters_sample_join_and_generation_trace(monkeypatch, tmp_path):
     data=datasets.Dataset.from_list([{'question':'one two?', 'answer':'two #### 2'},
                                      {'question':'two one?', 'answer':'one #### 3'}])
     monkeypatch.setattr(datasets,'load_dataset',lambda *args,**kwargs:datasets.DatasetDict(test=data))
@@ -33,6 +33,8 @@ def test_stock_gsm_filters_sample_join_and_generation_trace(monkeypatch):
         apply_chat_template=True,gen_kwargs={'max_gen_toks':4,'do_sample':False},
         log_samples=True,bootstrap_iters=0,random_seed=6304,numpy_random_seed=6304,
         torch_random_seed=6304,fewshot_random_seed=6304)
+    from atml_pa3.common import write_json
+    write_json(tmp_path / 'real_harness_result.json', result)
     samples=result['samples']['gsm8k_cot']
     assert len(samples)==4  # two documents, two stock answer filters
     rows=pack_samples('gsm8k_cot',samples,2,lm.rows)

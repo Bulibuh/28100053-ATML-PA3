@@ -144,6 +144,25 @@ def pack_samples(task, rows, expected, generation_rows):
     return [grouped[key] for key in sorted(grouped)]
 
 
+def recover_gsm8k_scores(path, expected=1319):
+    """Recover primary metric means from completed records, never generate replacements."""
+    rows = read_jsonl(path)
+    if len(rows) != expected or {r["doc_id"] for r in rows} != set(range(expected)):
+        raise ValueError(f"Recovery requires exactly {expected} distinct complete GSM8K examples")
+    scores = {"alias": "gsm8k_cot"}
+    for name in ("strict-match", "flexible-extract"):
+        values = []
+        for row in rows:
+            value = row["filters"][name]["metrics"]["exact_match"]
+            if value not in (0, 1):
+                raise ValueError("Invalid saved exact-match score")
+            if "generation_trace" not in row or "extracted_answer" not in row:
+                raise ValueError("Saved GSM8K record lacks required generation evidence")
+            values.append(float(value))
+        scores[f"exact_match,{name}"] = sum(values) / expected
+    return scores
+
+
 def evaluate(args):
     from lm_eval import evaluator
     from lm_eval.models.huggingface import HFLM
@@ -154,6 +173,18 @@ def evaluate(args):
     seed_all()
     out = ARTIFACT_ROOT / "evidence/task1/evaluation" / args.condition
     out.mkdir(parents=True, exist_ok=True)
+    recovered = None
+    if getattr(args, "reuse_gsm8k", False):
+        if args.condition != "baseline":
+            raise ValueError("Legacy GSM8K recovery is limited to baseline; other conditions require checkpoint provenance")
+        saved = out / "gsm8k_cot_samples.jsonl"
+        recovered = recover_gsm8k_scores(saved)
+        write_json(out / "gsm8k_recovered.json", dict(
+            results={"gsm8k_cot": recovered}, samples_sha256=sha256(saved),
+            condition=args.condition, model=model_spec(),
+            note="Metric means recovered from complete saved per-example results. Original harness metadata and uncertainty estimates were not recovered.",
+        ))
+        message("Recovered all 1319 saved GSM8K examples; skipping GSM8K generation")
     t = tokenizer()
     model = merged_model(args.condition, t, out)
     devices = {str(p.device) for p in model.parameters()}
@@ -168,12 +199,14 @@ def evaluate(args):
     lm = traced_hflm_class()(
         pretrained=model, tokenizer=t, batch_size=args.batch_size, max_length=4096
     )
-    all_results = {}
-    completed_counts = {}
+    all_results = {"gsm8k_cot": recovered} if recovered is not None else {}
+    completed_counts = {"gsm8k_cot": 1319} if recovered is not None else {}
     for tasks, chat in [
         (["gsm8k_cot"], True),
         (["hellaswag", "boolq", "arc_easy"], False),
     ]:
+        if chat and recovered is not None:
+            continue
         from .taskdefs import task_configs
         with stage(f"Evaluate {', '.join(tasks)}: dataset loading, request preparation, then inference"):
             res = evaluator.simple_evaluate(
@@ -204,6 +237,7 @@ def evaluate(args):
             with (out / f"{task}_samples.jsonl").open("w") as f:
                 for r in rows:
                     f.write(json.dumps(r, default=json_default) + "\n")
+        write_json(out / "partial_scores.json", dict(results=all_results, counts=completed_counts))
         write_json(
             out / ("gsm8k_harness.json" if chat else "retention_harness.json"), res
         )
@@ -215,6 +249,7 @@ def evaluate(args):
             model=model_spec(),
             hardware=hardware(),
             full_splits=True,
+            gsm8k_recovered_from_samples=recovered is not None,
             counts=completed_counts,
             seed=SEED,
             task_definition_sha256=__import__("atml_pa3.taskdefs", fromlist=["definition_hash"]).definition_hash(),

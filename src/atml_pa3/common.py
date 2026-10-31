@@ -54,8 +54,10 @@ def json_default(x):
         return x.tolist()
     if isinstance(x, np.generic):
         return x.item()
-    if isinstance(x, Path):
+    if isinstance(x, (Path, torch.dtype, torch.device, np.dtype)):
         return str(x)
+    if torch.is_tensor(x):
+        return x.detach().cpu().tolist()
     raise TypeError(type(x).__name__)
 
 

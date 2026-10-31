@@ -26,6 +26,8 @@ def main():
     evaluate = sub.add_parser("evaluate")
     evaluate.add_argument("--condition", choices=CONDITIONS, required=True)
     evaluate.add_argument("--batch-size", type=int, default=2)
+    evaluate.add_argument("--reuse-gsm8k", action="store_true",
+                          help="Recover a baseline GSM8K run from its complete saved per-example file")
     evaluate.set_defaults(func=task1_eval.evaluate)
     sub.add_parser("diagnostics").set_defaults(func=task1_eval.diagnostics)
     qualitative = sub.add_parser("qualitative")

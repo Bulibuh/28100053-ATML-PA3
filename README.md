@@ -124,3 +124,13 @@ pa3 = runpy.run_path(str(PROJECT / "scripts/colab_runner.py"))["make_runner"](PR
 ```
 
 A failed command still raises with its original exit code. The displayed traceback and saved log are needed to diagnose errors; VRAM usage alone cannot identify their cause. Full GPU runs remain unverified in this development environment.
+
+## Recover GSM8K after the dtype serialization error
+
+If baseline generation completed but an older version failed saving harness metadata with `TypeError: dtype`, keep the same artifact directory and its `evidence/task1/evaluation/baseline/gsm8k_cot_samples.jsonl`. After updating the code, run:
+
+```bash
+.venv-colab/bin/python -m atml_pa3.cli task1 evaluate --condition baseline --batch-size 32 --reuse-gsm8k
+```
+
+This validates all 1,319 unique saved example IDs and both exact-match filters, reconstructs their metric means, and runs only HellaSwag, BoolQ, and ARC-Easy. It preserves the original sample file and records its SHA-256. Recovery is explicit and limited to baseline because the older records lack independent checkpoint provenance. Original harness metadata and uncertainty estimates are not reconstructed; `gsm8k_recovered.json` marks that limitation. Future evaluations serialize PyTorch dtypes/devices correctly and save partial aggregate scores before the full metadata payload.
