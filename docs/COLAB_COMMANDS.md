@@ -29,20 +29,29 @@ Use one source-loading method, not both. A new Colab runtime loses /content; Dri
 
 ## 2. Install and verify
 
-Run before importing torch or transformers in other cells. The project keeps compatible Colab CUDA PyTorch instead of installing a CPU wheel.
+The installer supports Python 3.11–3.13, including Colab's Python 3.13 runtime. Run this cell from the repository directory:
 
-```python
-!nvidia-smi
-!python -m pip install -r requirements-colab.txt
-!python -m pip install -e '.[test]'
-!python -m pip check
-!pa3 doctor
-!python -m pytest -q
+```bash
+%%bash
+set -euo pipefail
+python scripts/setup_colab.py
 ```
 
-If package installation changes modules already imported by Colab, restart the runtime and rerun the directory/verification cells. pa3 doctor must show a CUDA build and the A100. CPU tests passing does not establish GPU readiness.
+It creates .venv-colab without shared site-packages, installs the official matching PyTorch 2.9.1 / torchvision 0.24.1 CUDA 12.8 wheels, installs assignment dependencies, runs pip check, checks compiled torchvision operators and model imports, executes an FP16 CUDA matrix multiplication, and runs the tests. Colab's notebook-kernel packages are left untouched. The first install downloads a separate CUDA stack and needs several GB of disk; subsequent runs reuse it.
 
-For long jobs, place all shell commands in a %%bash cell with set -euo pipefail. A failed individual !command does not automatically stop later notebook cells.
+Inside a %%bash cell, use ordinary shell commands: python, never !python. Do not put a backslash at the end of every line. A backslash is used only for the deliberate multiline commands shown later. Exit code 127 means a shell command was not found; IPython ! syntax is not recognized inside bash.
+
+Activate the environment in EVERY later %%bash cell. Activation does not carry over between cells:
+
+```bash
+%%bash
+set -euo pipefail
+source .venv-colab/bin/activate
+python -m pip check
+pa3 doctor --require-cuda
+```
+
+The notebook uses this same isolated interpreter for all subprocesses. Do not import the notebook kernel's preinstalled torch to judge the assignment environment. If you already ran the old shared-package install or torchvision workaround, use the new isolated installer; no manual torchvision uninstall or --no-deps replacement is needed. The --cpu setup option is for implementation checks on a CPU machine and must not be used for A100 experiments. CPU test success does not establish GPU readiness.
 
 ## 3. Mount Drive and checkpoint safety
 
@@ -63,6 +72,7 @@ Prefer local /content disk for active training; periodically copy recovery state
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 df -h /content
 mkdir -p /content/drive/MyDrive/ATML_PA3/checkpoints
 cp -a checkpoints/. /content/drive/MyDrive/ATML_PA3/checkpoints/
@@ -79,6 +89,7 @@ The data command resolves an immutable starting-model revision, filters source-o
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task1 prepare
 pa3 task1 evaluate --condition baseline
 ```
@@ -92,6 +103,7 @@ Each method starts independently from Qwen3-0.6B. This cell can run for a long t
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task1 train --method full
 pa3 task1 evaluate --condition full_mid
 pa3 task1 evaluate --condition full
@@ -116,6 +128,7 @@ Recovery files are at updates 312, 625, 937, and 1250. Resume a method from its 
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task1 train --method full \
   --resume checkpoints/task1/full/update_625.pt
 ```
@@ -129,12 +142,14 @@ The PDF links the exact upstream YAML and MathVista question metadata. Fetch the
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 python scripts/download_public_inputs.py
 ```
 
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task1 diagnostics
 pa3 task1 qualitative --prompts /content/atml-pa3/data/external/first_plot_questions.yaml
 pa3 evidence
@@ -147,6 +162,7 @@ The combined one-command runner is available when the prompt file exists:
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 export QUALITATIVE_PROMPTS=/content/atml-pa3/data/external/first_plot_questions.yaml
 bash scripts/run_task1.sh
 ```
@@ -160,6 +176,7 @@ Download official annotations. If a published URL has moved, download the same f
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 python scripts/download_annotations.py
 pa3 task2 prepare --annotations data/external/coco/annotations
 pa3 task2 cache --download
@@ -172,6 +189,7 @@ If images are already available, supply their root instead of downloading:
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task2 cache --images /content/coco/images
 ```
 
@@ -184,6 +202,7 @@ Task 2 shares the immutable starting Qwen specification from Task 1 prepare. If 
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task2 train --visual-tokens 196
 pa3 task2 evaluate --visual-tokens 196
 pa3 evidence
@@ -198,6 +217,7 @@ Resume the same 196-token run from a saved global update, for example:
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task2 train --visual-tokens 196 \
   --resume checkpoints/task2/tokens_196/update_2500.pt
 ```
@@ -207,6 +227,7 @@ The optional 49-token experiment requires a fresh independent curriculum. It reu
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task2 train --visual-tokens 49
 pa3 task2 evaluate --visual-tokens 49
 pa3 evidence
@@ -219,6 +240,7 @@ The assignment links this exact course Drive folder. In Colab, attempt the follo
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 python -m pip install gdown==5.2.0
 gdown --folder \
   'https://drive.google.com/drive/folders/1utX-Gfi9vvaoi1mi0pzNpDGL1o1fAh23' \
@@ -246,6 +268,7 @@ Replace the example paths below with the actual archive structure. Missing READM
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 task3 offline \
   --math-dir /content/ATML-PA3-Data/LLM \
   --mathvista-dir /content/ATML-PA3-Data/VLM \
@@ -264,6 +287,7 @@ Read the exact Qwen2.5-3B-Instruct commit SHA from the supplied README. Do not u
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 REVISION_FROM_README=REPLACE_WITH_EXACT_40_CHARACTER_MODEL_SHA
 pa3 task3 live \
   --revision "$REVISION_FROM_README" \
@@ -278,6 +302,7 @@ The script checks the revision against the README, loads FP16 weights without qu
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 pa3 evidence
 pa3 audit
 python -m pytest -q --junitxml=evidence/validation/pytest.xml
@@ -294,6 +319,7 @@ Back up large checkpoints separately. Export evidence/configuration/provenance a
 ```bash
 %%bash
 set -euo pipefail
+source .venv-colab/bin/activate
 mkdir -p /content/drive/MyDrive/ATML_PA3
 python -m pip list --format=freeze > evidence/colab_environment.txt
 tar -czf /content/drive/MyDrive/ATML_PA3/evidence.tar.gz \

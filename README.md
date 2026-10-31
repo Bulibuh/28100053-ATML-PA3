@@ -15,16 +15,19 @@ The command PDF is operational documentation, **not** the graded report. You mus
 
 ## Quick start
 
-Use Python 3.10–3.13; Python 3.12 was tested locally. In Colab, select an A100 runtime first. If the GitHub repository has not yet received these files, upload the delivered ZIP and follow the PDF's ZIP setup cell.
+The pinned setup supports Python 3.11–3.13. In Colab, select an A100 runtime and open this repository directory. If using the delivered ZIP, follow the PDF's source-upload cell.
 
 ```bash
-python -m pip install -r requirements-colab.txt
-python -m pip install -e '.[test]'
-pa3 doctor
-python -m pytest -q
+python scripts/setup_colab.py
+source .venv-colab/bin/activate
+pa3 doctor --require-cuda
 ```
 
-Keep Colab's CUDA PyTorch if it satisfies the declared range; do not install the CPU-only wheel used for local testing onto Colab. Restart the runtime after installation if Colab already imported incompatible library versions. No quantization, BF16 substitution, or batch-size enlargement is used.
+The installer creates an isolated `.venv-colab` with the official matching CUDA 12.8 pair **torch 2.9.1 / torchvision 0.24.1**. It runs dependency checks, torchvision's compiled NMS operator, Qwen/SigLIP/harness imports, an actual FP16 CUDA operation, and pytest. It leaves Colab's shared packages untouched, avoiding shared-environment dependency conflicts and mismatched torchvision binaries. The first installation requires several GB of disk for the separate CUDA stack.
+
+In a `%%bash` cell use `python`, **not `!python`**. Activate `.venv-colab` in each new shell cell; shell activation does not persist between notebook cells. The updated notebook selects the same virtualenv for every subprocess. Do not run the previous global-install or torchvision `--no-deps` workaround cells.
+
+For local CPU implementation checks (not GPU validation), use `python scripts/setup_colab.py --cpu`, then `source .venv-cpu/bin/activate`. Training still requires CUDA. No quantization, BF16 substitution, or batch-size enlargement is used.
 
 ```bash
 # Small public inputs linked in the assignment PDF.

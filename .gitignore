@@ -13,3 +13,5 @@ checkpoints/
 *.pt
 *.safetensors
 *.zip
+.venv-colab/
+.venv-cpu/

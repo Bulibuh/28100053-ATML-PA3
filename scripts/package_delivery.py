@@ -17,11 +17,16 @@ TOP_FILES = {
 
 def main():
     with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(ROOT.rglob("*")):
+        candidates = [ROOT / name for name in TOP_FILES]
+        candidates.append(ROOT / "data/external/README.md")
+        for name in sorted(ALLOWED):
+            candidates.extend((ROOT / name).rglob("*"))
+        for path in sorted(candidates):
             relative = path.relative_to(ROOT)
             if (
                 not path.is_file()
                 or "__pycache__" in relative.parts
+                or any(part.endswith(".egg-info") for part in relative.parts)
                 or path.suffix in {".pyc", ".pt", ".safetensors", ".parquet"}
             ):
                 continue

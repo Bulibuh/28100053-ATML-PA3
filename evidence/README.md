@@ -42,3 +42,7 @@ Raw fixed-budget and adaptive records are Parquet to keep storage practical; the
 ## Validation versus experiments
 
 `validation/pytest.xml` and `validation/summary.json` describe CPU unit/integration tests with synthetic fixtures and a tiny randomly initialized Qwen. They do not demonstrate that the training/evaluation experiments ran, nor that reported model performance improved. The test runner's real exit code is preserved.
+
+## Colab Python 3.13 setup regression
+
+`validation/colab313_summary.json`, `colab313_environment.json`, and `colab313_pytest.xml` record the isolated Python 3.13 check with torch 2.9.1+cpu and torchvision 0.24.1+cpu. The original Python 3.12 results remain as historical evidence. The newer check covers the setup regressions, binary operator/import checks, and the full CPU test suite. Official CUDA 12.8 CPython 3.13 wheel availability was checked separately; CUDA/A100 execution is not claimed from a CPU run. `scripts/setup_colab.py` runs actual FP16 CUDA execution checks on Colab.

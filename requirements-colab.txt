@@ -1,5 +1,7 @@
-# Tested direct dependency versions; retain a compatible CUDA PyTorch in Colab.
-# torch>=2.6,<2.10 (do not install the CPU-only local validation build)
+# Python 3.11–3.13 isolated Colab stack. Use scripts/setup_colab.py first.
+# The setup script installs matched CUDA 12.8 wheels from the official PyTorch index.
+torch==2.9.1
+torchvision==0.24.1
 transformers==4.57.1
 datasets==3.6.0
 accelerate==1.10.1

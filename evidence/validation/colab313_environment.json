@@ -1,0 +1,16 @@
+{
+  "python": "3.13.16",
+  "executable": "/workspace/pa3-colab313/bin/python",
+  "checks": {
+    "torch_import": true,
+    "torchvision_operator": true,
+    "qwen_siglip_harness_imports": true
+  },
+  "errors": [],
+  "torch": "2.9.1+cpu",
+  "cuda": null,
+  "gpu": null,
+  "torchvision": "0.24.1+cpu",
+  "transformers": "4.57.1",
+  "status": "passed"
+}

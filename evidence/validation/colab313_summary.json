@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "python": "3.13.16",
+  "torch": "2.9.1+cpu",
+  "torchvision": "0.24.1+cpu",
+  "tests": 27,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "dependency_check": "No broken requirements found",
+  "isolated_install": "completed",
+  "repeated_install": "completed",
+  "torchvision_cpu_operator": "passed",
+  "model_and_harness_imports": "passed",
+  "official_cuda_cp313_wheels": {
+    "torch": "2.9.1+cu128",
+    "torchvision": "0.24.1+cu128",
+    "availability": "verified from official index"
+  },
+  "cuda_execution_verified": false,
+  "a100_training_verified": false,
+  "note": "CPU validation of the Colab Python 3.13 package stack. Default installer also requires an actual FP16 CUDA operation when run on Colab."
+}
