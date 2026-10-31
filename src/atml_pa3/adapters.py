@@ -36,6 +36,7 @@ class LowRank(nn.Module):
         )
         nn.init.kaiming_uniform_(self.A, a=math.sqrt(5))
         self.drop = nn.Dropout(dropout)
+        self._batch_factors = None
         if bases is not None:
             self.register_buffer("U", bases[0].float())
             self.register_buffer("V", bases[1].float())
@@ -58,10 +59,12 @@ class LowRank(nn.Module):
             return self.scale * (b @ a)
 
     def forward(self, x):
-        b, a = self.factors()
-        return self.base(x) + self.scale * F.linear(
-            F.linear(self.drop(x).to(a.dtype), a), b
-        ).to(x.dtype)
+        b, a = self._batch_factors if self._batch_factors is not None else self.factors()
+        adapter_x = self.drop(x)
+        if not torch.is_autocast_enabled(x.device.type):
+            adapter_x = adapter_x.to(a.dtype)
+        # AMP handles weight casts; do not upcast all activations only to downcast.
+        return self.base(x) + self.scale * F.linear(F.linear(adapter_x, a), b).to(x.dtype)
 
 
 def attach(model, rank=16, alpha=32, protection=0, targets=TARGETS, cache=None):

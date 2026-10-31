@@ -216,7 +216,8 @@ def causal_loss(logits, labels, per_example=False):
 
 
 def device_batch(batch):
-    return {k: v.to("cuda", non_blocking=True) for k, v in batch.items()}
+    return {k: (v if v.is_pinned() else v.pin_memory()).to("cuda", non_blocking=True)
+            for k, v in batch.items()}
 
 
 def hardware():
@@ -248,7 +249,8 @@ def amp_update(optimizer, scaler, parameters, backward, on_skip=None, max_attemp
         scaler.unscale_(optimizer)
         norm = torch.nn.utils.clip_grad_norm_(parameters, 1.0)
         old_scale = scaler.get_scale()
-        if not math.isfinite(float(norm)):
+        norm_value = float(norm)
+        if not math.isfinite(norm_value):
             # A norm reduction can overflow even when individual gradients are finite.
             # Never count such an attempt as a successful (zeroed/NaN) parameter update.
             scaler.update(new_scale=old_scale / 2)
@@ -256,7 +258,7 @@ def amp_update(optimizer, scaler, parameters, backward, on_skip=None, max_attemp
             scaler.step(optimizer)
             scaler.update()
         if scaler.get_scale() >= old_scale:
-            return metrics, float(norm), attempt
+            return metrics, norm_value, attempt
         if on_skip is not None:
             on_skip(
                 dict(

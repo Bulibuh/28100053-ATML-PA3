@@ -62,5 +62,20 @@
       "failed": 0
     },
     "behavior": "Per-update journals stay local; standalone logs sync only on successful training completion; checkpoint log history supports recovery"
+  },
+  "fast_sft_validation": {
+    "python313_full_suite": {
+      "passed": 45,
+      "failed": 0,
+      "skipped": 1
+    },
+    "python312_optimization_and_recovery": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 1
+    },
+    "skipped_check": "CUDA-only AMP/projected-adapter/fused-optimizer test; requires a GPU runtime",
+    "verified": "Dense versus response-only loss/gradient equivalence, checkpointed LoRA/OPLoRA gradients, projection-chain accumulation, optimizer resume flags",
+    "throughput": "Actual A100 speedup unmeasured"
   }
 }

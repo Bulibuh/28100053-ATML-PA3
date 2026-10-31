@@ -10,6 +10,7 @@ from .common import *
 from .adapters import attach, export_factors
 from .progress import tqdm, stage, message
 from .training_logs import TrainingLogs
+from .fast_sft import prepare_microbatch, response_loss, projected_effective_batch
 
 METHODS = ("full", "l2sp", "lora4", "lora16", "oplora16")
 
@@ -222,7 +223,8 @@ def train(args):
     overhead["reference_transfer_seconds"] = overhead["reference_prepare_seconds"] if method == "full" else 0.0
     lr = cfg["full_lr"] if method in ("full", "l2sp") else cfg["adapter_lr"]
     opt = torch.optim.AdamW(
-        optimizer_groups(model, lr), betas=(0.9, 0.999), eps=1e-8, foreach=False
+        optimizer_groups(model, lr), betas=(0.9, 0.999), eps=1e-8, foreach=False,
+        fused=next(model.parameters()).device.type == "cuda" and not args.resume
     )
     sched = schedule(opt, 1250, 38)
     scaler = torch.amp.GradScaler("cuda")
@@ -232,6 +234,8 @@ def train(args):
         if ck.get("method") != method or ck.get("train_sha256") != sha256(ARTIFACT_ROOT / "data/prepared/task1/train.jsonl") or ck.get("model_spec") != model_spec():
             raise ValueError("Resume method, data hash, or model revision mismatch")
         start = ck["update"]
+    overhead["optimizer_fused"] = bool(opt.param_groups[0].get("fused"))
+    overhead["sft_implementation"] = "response_only_head_chunks_256"
     history = ck.get("log_history", {}) if args.resume else {}
     def prior_rows(name):
         path = out / f"{name}.jsonl"
@@ -269,20 +273,22 @@ def train(args):
             raise ValueError("Incomplete effective batch")
         denom = sum(sum(v != -100 for v in r["labels"][1:]) for r in effective)
 
+        # Build CPU indices and transfer all sixteen microbatches once per update,
+        # outside AMP retry. Original example order and batch boundaries are retained.
+        prepare_start = time.perf_counter()
+        microbatches = [device_batch(prepare_microbatch(effective[j:j+2], t.pad_token_id))
+                        for j in range(0, 32, 2)]
+        input_prepare_seconds = time.perf_counter() - prepare_start
+
         def backward():
-            sft = 0.0
-            for j in range(0, 32, 2):
-                batch = device_batch(collate(effective[j : j + 2], t.pad_token_id))
-                with torch.autocast("cuda", dtype=torch.float16):
-                    logits = model(
-                        input_ids=batch["input_ids"],
-                        attention_mask=batch["attention_mask"],
-                    ).logits
-                    summed, _ = causal_loss(logits, batch["labels"])
-                    loss = summed / denom
-                scaler.scale(loss).backward()
-                sft += float(loss.detach())
-                del logits, summed, loss, batch
+            sft = torch.zeros((), device=next(model.parameters()).device)
+            with projected_effective_batch(model):
+                for batch in microbatches:
+                    with torch.autocast("cuda", dtype=torch.float16):
+                        loss = response_loss(model, batch) / denom
+                    scaler.scale(loss).backward()
+                    sft.add_(loss.detach())
+                    del loss
             omega = torch.zeros((), device=next(model.parameters()).device)
             if method == "l2sp":
                 # Add the unaveraged penalty once per effective batch; no second full-model autograd graph.
@@ -292,9 +298,11 @@ def train(args):
                     if p.grad is None:
                         p.grad = torch.zeros_like(p)
                     p.grad.add_(delta, alpha=0.001 * scaler.get_scale())
-            return dict(sft=sft, omega=float(omega))
+            sft_value, omega_value = torch.stack((sft, omega)).detach().cpu().tolist()
+            return dict(sft=sft_value, omega=omega_value)
 
         used_lr = opt.param_groups[0]["lr"]
+        compute_start = time.perf_counter()
         values, norm, retries = amp_update(
             opt,
             scaler,
@@ -305,6 +313,7 @@ def train(args):
                 dict(update=update + 1, examples=(update + 1) * 32, **record),
             ),
         )
+        compute_seconds = time.perf_counter() - compute_start
         sft = values["sft"]
         omega = values["omega"]
         skipped += retries
@@ -316,6 +325,8 @@ def train(args):
                 update=update + 1,
                 examples=(update + 1) * 32,
                 sft_loss=sft,
+                input_prepare_seconds=input_prepare_seconds,
+                compute_seconds=compute_seconds,
                 omega=float(omega),
                 weighted_penalty=float(omega) * (0.001 if method == "l2sp" else 0),
                 total_loss=sft + float(omega) * (0.001 if method == "l2sp" else 0),
