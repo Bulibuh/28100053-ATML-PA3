@@ -7,6 +7,8 @@ from .common import *
 
 
 def build(args=None):
+    # Set before importing matplotlib: an invalid inherited backend fails at import.
+    os.environ["MPLBACKEND"] = "Agg"
     import matplotlib
 
     matplotlib.use("Agg")

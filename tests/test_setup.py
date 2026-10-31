@@ -141,3 +141,24 @@ def test_notebook_python_cells_compile_and_use_subprocess():
             compile("".join(cell["source"]), "notebook_cell", "exec")
     assert any(".venv-colab/bin/python" in "".join(c["source"]) for c in notebook["cells"])
     subprocess.run(["bash", "-n", str(ROOT / "scripts/run_task1.sh")], check=True)
+
+
+def test_installer_child_uses_agg_without_changing_parent(monkeypatch, capsys):
+    import os
+    module = installer_module()
+    monkeypatch.setenv('MPLBACKEND', 'module://missing_colab_backend')
+    module.run([sys.executable, '-c', "import os, matplotlib; print('backend=' + matplotlib.get_backend())"])
+    assert 'backend=Agg' in capsys.readouterr().out
+    assert os.environ['MPLBACKEND'] == 'module://missing_colab_backend'
+
+
+def test_cli_doctor_overrides_unavailable_colab_backend(tmp_path):
+    import os
+    result = subprocess.run(
+        [sys.executable, '-m', 'atml_pa3.cli', 'doctor'],
+        cwd=ROOT,
+        env=dict(os.environ, MPLBACKEND='module://matplotlib_inline.backend_inline', PA3_ARTIFACT_ROOT=str(tmp_path)),
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)['tiny_qwen_forward_backward'] is True

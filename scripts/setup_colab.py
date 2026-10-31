@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -33,9 +34,12 @@ def log(message):
 
 def run(command, *, cwd=ROOT):
     log("+ " + shlex.join([str(value) for value in command]))
+    # Colab injects a notebook-only backend that is absent from the isolated venv.
+    child_env = dict(os.environ, MPLBACKEND="Agg")
     with subprocess.Popen(
         [str(value) for value in command],
         cwd=cwd,
+        env=child_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
