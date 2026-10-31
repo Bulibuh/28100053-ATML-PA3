@@ -9,6 +9,7 @@ import torch
 from .common import *
 from .adapters import attach, export_factors
 from .progress import tqdm, stage, message
+from .training_logs import TrainingLogs
 
 METHODS = ("full", "l2sp", "lora4", "lora16", "oplora16")
 
@@ -202,6 +203,8 @@ def train(args):
     t = tokenizer()
     out = ARTIFACT_ROOT / "evidence/task1" / method
     out.mkdir(parents=True, exist_ok=True)
+    if not args.resume and ((out / "train.jsonl").exists() or (out / "config.json").exists()):
+        raise FileExistsError(f"{out} already contains a run; use --resume or archive that run")
     model, overhead = construct(method)
     model.train()
     torch.cuda.synchronize()
@@ -229,33 +232,23 @@ def train(args):
         if ck.get("method") != method or ck.get("train_sha256") != sha256(ARTIFACT_ROOT / "data/prepared/task1/train.jsonl") or ck.get("model_spec") != model_spec():
             raise ValueError("Resume method, data hash, or model revision mismatch")
         start = ck["update"]
-    log = out / "train.jsonl"
-    if log.exists():
-        if not args.resume:
-            raise FileExistsError(
-                f"{log} already exists; use --resume or archive the previous run"
-            )
-        previous = read_jsonl(log)
-        kept = [r for r in previous if r["update"] <= start]
-        backup = out / f"train_before_resume_{time.time_ns()}.jsonl"
-        log.rename(backup)
-        for r in kept:
-            append_json(log, r)
-    else:
-        kept = []
-    previous_seconds = (
-        kept[-1]["elapsed"]
-        if kept
-        else (ck.get("elapsed_seconds", 0.0) if args.resume else 0.0)
-    )
+    history = ck.get("log_history", {}) if args.resume else {}
+    def prior_rows(name):
+        path = out / f"{name}.jsonl"
+        rows = history.get(name)
+        if rows is None:
+            rows = read_jsonl(path) if path.exists() else []
+        return [r for r in rows if r["update"] <= start]
+    kept = prior_rows("train")
+    checkpoint_rows = prior_rows("checkpoints")
+    if args.resume and ck.get("checkpoint_entry"):
+        checkpoint_rows = [r for r in checkpoint_rows if r["update"] != start]
+        checkpoint_rows.append(dict(ck["checkpoint_entry"], bytes=Path(args.resume).stat().st_size))
+    journals = TrainingLogs(method, initial=dict(
+        train=kept, overflow=prior_rows("overflow"), checkpoints=checkpoint_rows))
+    message(f"Per-update logs stay local until successful training completion: {journals.directory}")
+    previous_seconds = ck.get("elapsed_seconds", 0.0) if args.resume else 0.0
     previous_peak = ck.get("peak_gpu_bytes", 0) if args.resume else 0
-    cklog = out / "checkpoints.jsonl"
-    if args.resume and cklog.exists():
-        old_rows = read_jsonl(cklog)
-        cklog.rename(out / f"checkpoints_before_resume_{time.time_ns()}.jsonl")
-        for row in old_rows:
-            if row["update"] <= start:
-                append_json(cklog, row)
     write_json(
         out / "config.json",
         dict(
@@ -290,7 +283,7 @@ def train(args):
                 scaler.scale(loss).backward()
                 sft += float(loss.detach())
                 del logits, summed, loss, batch
-            omega = torch.zeros((), device="cuda")
+            omega = torch.zeros((), device=next(model.parameters()).device)
             if method == "l2sp":
                 # Add the unaveraged penalty once per effective batch; no second full-model autograd graph.
                 for n, p in model.named_parameters():
@@ -307,8 +300,8 @@ def train(args):
             scaler,
             model.parameters(),
             backward,
-            lambda record: append_json(
-                out / "overflow.jsonl",
+            lambda record: journals.append(
+                "overflow",
                 dict(update=update + 1, examples=(update + 1) * 32, **record),
             ),
         )
@@ -317,8 +310,8 @@ def train(args):
         skipped += retries
         sched.step()
         updates.set_postfix(sft=f"{sft:.4f}", lr=f"{used_lr:.2e}", skipped=skipped)
-        append_json(
-            out / "train.jsonl",
+        journals.append(
+            "train",
             dict(
                 update=update + 1,
                 examples=(update + 1) * 32,
@@ -336,6 +329,17 @@ def train(args):
         )
         if update + 1 in cfg["checkpoints"]:
             path = ARTIFACT_ROOT / "checkpoints/task1" / method / f"update_{update+1}.pt"
+            extra = {}
+            if ref is not None and (
+                (method == "full" and update + 1 == 625) or update + 1 == 1250
+            ):
+                extra["displacement"] = (
+                    sum(
+                        float((p.detach().to(ref[n].device) - ref[n]).square().sum())
+                        for n, p in model.named_parameters()
+                    )
+                    ** 0.5
+                )
             message(f"Saving recovery checkpoint: {path} (may take time on Drive)")
             with stage(f"Write recovery update {update + 1}"):
                 save_checkpoint(
@@ -352,20 +356,11 @@ def train(args):
                     skipped_updates=skipped,
                     train_sha256=sha256(ARTIFACT_ROOT / "data/prepared/task1/train.jsonl"),
                     model_spec=model_spec(),
+                    log_history=journals.snapshot(),
+                    checkpoint_entry=dict(update=update + 1, **extra),
                 )
-            extra = {}
-            if ref is not None and (
-                (method == "full" and update + 1 == 625) or update + 1 == 1250
-            ):
-                extra["displacement"] = (
-                    sum(
-                        float((p.detach().to(ref[n].device) - ref[n]).square().sum())
-                        for n, p in model.named_parameters()
-                    )
-                    ** 0.5
-                )
-            append_json(
-                out / "checkpoints.jsonl",
+            journals.append(
+                "checkpoints",
                 dict(update=update + 1, bytes=path.stat().st_size, **extra),
             )
         if (update + 1) % 25 == 0:
@@ -377,6 +372,8 @@ def train(args):
         torch.cuda.synchronize()
         overhead["export_seconds"] = time.perf_counter() - ts
         overhead["export_bytes"] = (out / "projected_factors.pt").stat().st_size
+    with stage("Sync completed training logs to persistent storage"):
+        journals.publish(out)
     write_json(
         out / "resources.json",
         dict(

@@ -134,3 +134,9 @@ If baseline generation completed but an older version failed saving harness meta
 ```
 
 This validates all 1,319 unique saved example IDs and both exact-match filters, reconstructs their metric means, and runs only HellaSwag, BoolQ, and ARC-Easy. It preserves the original sample file and records its SHA-256. Recovery is explicit and limited to baseline because the older records lack independent checkpoint provenance. Original harness metadata and uncertainty estimates are not reconstructed; `gsm8k_recovered.json` marks that limitation. Future evaluations serialize PyTorch dtypes/devices correctly and save partial aggregate scores before the full metadata payload.
+
+## Training log storage
+
+Every update is journaled on local runtime storage under `logs/training/<method>-*/`. Standalone `train.jsonl`, `overflow.jsonl`, and `checkpoints.jsonl` are synced to the artifact directory only after the training command (including adapter export) completes successfully. There is no periodic log sync and no per-update Drive write. Existing persistent logs are backed up at final sync. Live progress still appears in Colab.
+
+The required recovery checkpoints still go directly to persistent storage at updates 312/625/937/1250. Each new checkpoint embeds the accumulated log history so a resumed run can reconstruct records after a runtime reset without separate mid-run log syncs. Earlier checkpoints remain supported by reading their existing persistent logs. Interrupted runs retain local journals while the runtime lives; resetting the runtime loses local-only records after the latest recovery checkpoint. This update applies only to newly started/resumed processes; pulling code does not change a running training process.

@@ -51,5 +51,16 @@
       "failed": 0
     },
     "scope": "Offline real harness-result serialization and saved-sample recovery; full GPU recovery remains to run in Colab"
+  },
+  "local_log_validation": {
+    "python313_full_suite": {
+      "passed": 38,
+      "failed": 0
+    },
+    "python312_logging_recovery_tests": {
+      "passed": 4,
+      "failed": 0
+    },
+    "behavior": "Per-update journals stay local; standalone logs sync only on successful training completion; checkpoint log history supports recovery"
   }
 }
