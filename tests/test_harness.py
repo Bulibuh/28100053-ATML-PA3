@@ -73,3 +73,23 @@ def test_stock_arc_and_hellaswag_normalized_and_raw_metrics(monkeypatch):
                                          log_samples=True,bootstrap_iters=0)
         assert len(pack_samples(name,result['samples'][name],2,[]))==2
         assert {'acc,none','acc_norm,none'} <= result['results'][name].keys()
+
+
+def test_batched_qualitative_matches_single_prompts_and_restores_padding():
+    from atml_pa3.task1_eval import generate_qualitative_batch
+    lm=local_lm()
+    # Force deterministic EOS on the first generated token, preserving padding tests.
+    model=lm.model
+    original=model.generate
+    def generate(**kwargs):
+        kwargs['max_new_tokens']=3
+        kwargs['forced_eos_token_id']=lm.tokenizer.eos_token_id
+        return original(**kwargs)
+    model.generate=generate
+    records=[{'prompt':'one','system':None},{'prompt':'one two one two one','system':None}]
+    before=lm.tokenizer.padding_side
+    batched=generate_qualitative_batch(model,lm.tokenizer,records)
+    single=[generate_qualitative_batch(model,lm.tokenizer,[r])[0] for r in records]
+    assert batched==single
+    assert lm.tokenizer.padding_side==before
+    assert all(not r['truncated'] for r in batched)

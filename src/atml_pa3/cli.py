@@ -30,6 +30,7 @@ def main():
     from .common import ROOT
     qualitative.add_argument("--prompts", default=str(ROOT / "configs/first_plot_questions.yaml"))
     qualitative.add_argument("--condition", choices=CONDITIONS, help="Generate one condition; combine after all seven")
+    qualitative.add_argument("--batch-size", type=int, default=1)
     qualitative.set_defaults(func=task1_eval.qualitative)
     sub.add_parser("summarize").set_defaults(func=evidence.build)
     sub.add_parser("audit").set_defaults(func=evidence.audit)

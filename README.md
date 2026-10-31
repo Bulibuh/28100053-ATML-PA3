@@ -60,6 +60,8 @@ $PY -m atml_pa3.cli task1 summarize
 $PY -m atml_pa3.cli task1 audit
 ```
 
+Both `task1 evaluate` and `task1 qualitative` accept `--batch-size`. For A100, you can request 32 for either command; the qualitative set has only 24 prompts, so it forms one batch. This larger batch has not been tested on an actual A100; reduce to 16/8/2 if memory is insufficient. Qualitative generation uses left padding and trims each response at its own EOS. Greedy outputs can differ near numerical ties when batch shapes change. Existing qualitative artifacts are reused, and their original batch size is preserved in the per-condition file.
+
 `--batch-size 1` lowers **evaluation** memory if necessary, without changing the training recipe. Example recovery:
 
 ```bash

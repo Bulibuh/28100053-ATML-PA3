@@ -12,7 +12,7 @@ condition() {
         "$PYTHON_BIN" -m atml_pa3.cli task1 evaluate --condition "$name" --batch-size "${PA3_EVAL_BATCH_SIZE:-2}"
     fi
     if [[ ! -f "$ARTIFACTS/evidence/task1/qualitative/$name.json" ]]; then
-        "$PYTHON_BIN" -m atml_pa3.cli task1 qualitative --condition "$name"
+        "$PYTHON_BIN" -m atml_pa3.cli task1 qualitative --condition "$name" --batch-size "${PA3_QUAL_BATCH_SIZE:-1}"
     fi
 }
 condition baseline

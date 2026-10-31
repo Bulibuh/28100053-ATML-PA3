@@ -346,7 +346,39 @@ def qualitative_messages(record):
     return messages + [dict(role="user", content=record["prompt"])]
 
 
+@torch.no_grad()
+def generate_qualitative_batch(model, t, records):
+    # Left padding is required for batched decoder-only generation.
+    prompts = [t.apply_chat_template(
+        qualitative_messages(r), tokenize=False, add_generation_prompt=True,
+        enable_thinking=False,
+    ) for r in records]
+    old_side = t.padding_side
+    try:
+        t.padding_side = "left"
+        batch = t(prompts, padding=True, add_special_tokens=False,
+                  return_token_type_ids=False, return_tensors="pt").to(model.device)
+    finally:
+        t.padding_side = old_side
+    result = model.generate(**batch, do_sample=False, max_new_tokens=512,
+                            pad_token_id=t.pad_token_id)
+    eos = model.generation_config.eos_token_id
+    eos = {eos} if isinstance(eos, int) else set(eos or [t.eos_token_id])
+    rows = []
+    for seq in result:
+        tokens = seq[batch["input_ids"].shape[1]:].tolist()
+        first_eos = next((i for i, token in enumerate(tokens) if token in eos), None)
+        if first_eos is not None:
+            tokens = tokens[:first_eos + 1]
+        rows.append(dict(response=t.decode(tokens, skip_special_tokens=True),
+                         output_tokens=len(tokens),
+                         truncated=first_eos is None and len(tokens) >= 512))
+    return rows
+
+
 def qualitative(args):
+    if getattr(args, "batch_size", 1) < 1:
+        raise ValueError("Batch size must be positive")
     require_cuda()
     seed_all()
     records, questions = load_qualitative_prompts(args.prompts)
@@ -367,37 +399,19 @@ def qualitative(args):
         model = merged_model(
             condition, t, ARTIFACT_ROOT / "evidence/task1/evaluation" / condition
         )
-        for r in records:
-            batch = t.apply_chat_template(
-                qualitative_messages(r),
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True,
-                add_generation_prompt=True,
-                enable_thinking=False,
-            ).to("cuda")
-            with torch.no_grad():
-                result = model.generate(
-                    **batch,
-                    do_sample=False,
-                    max_new_tokens=512,
-                    pad_token_id=t.pad_token_id,
-                )
-            tokens = result[0, batch["input_ids"].shape[1] :].tolist()
-            all_rows.append(
-                dict(
-                    **r,
-                    condition=condition,
-                    response=t.decode(tokens, skip_special_tokens=True),
-                    output_tokens=len(tokens),
-                    truncated=len(tokens) == 512 and tokens[-1] != t.eos_token_id,
-                    annotation_required=str(r["question_id"])
-                    in (questions[0], questions[-1]),
-                )
-            )
+        from tqdm.auto import tqdm
+        batch_size = getattr(args, "batch_size", 1)
+        for start in tqdm(range(0, len(records), batch_size), desc=f"Qualitative {condition}"):
+            chunk = records[start:start + batch_size]
+            outputs = generate_qualitative_batch(model, t, chunk)
+            for r, generated in zip(chunk, outputs):
+                all_rows.append(dict(
+                    **r, **generated, condition=condition,
+                    annotation_required=str(r["question_id"]) in (questions[0], questions[-1]),
+                ))
         del model
         torch.cuda.empty_cache()
-        write_json(out / f"{condition}.json", dict(prompt_sha256=sha256(args.prompts), model=model_spec(), rows=all_rows))
+        write_json(out / f"{condition}.json", dict(prompt_sha256=sha256(args.prompts), model=model_spec(), batch_size=getattr(args, "batch_size", 1), rows=all_rows))
     if not all((out / f"{c}.json").exists() for c in CONDITIONS):
         print("Saved selected conditions; generate remaining conditions to assemble all 168 responses.")
         return
