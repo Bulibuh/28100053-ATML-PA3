@@ -157,7 +157,7 @@ def audit(args=None):
         df = pd.read_csv(annotations)
         cols = ["format_compliance", "coherence_relevance", "repetition", "math_intrusion",
                 "inappropriate_content", "excerpt", "human_notes"]
-        checks["human_annotations_complete"] = len(df) == 42 and df[cols].notna().all().all()
+        checks["human_annotations_complete"] = bool(len(df) == 42 and df[cols].notna().all().all())
     for m in METHODS:
         log = root / m / "train.jsonl"
         if log.exists():
@@ -170,4 +170,4 @@ def audit(args=None):
                   status="complete_artifact_set" if not missing and all(checks.values()) else "incomplete",
                   note="Human interpretation and report writing remain your responsibility. Artifact presence alone does not verify results.")
     write_json(root / "status.json", result)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2, default=json_default))
